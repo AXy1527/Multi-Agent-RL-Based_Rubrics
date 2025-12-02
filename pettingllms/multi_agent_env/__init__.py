@@ -4,7 +4,9 @@ from pettingllms.multi_agent_env. base.agent import Agent
 
 # Import existing environments
 from pettingllms.multi_agent_env.math import MathEnv, MathEnvBatch
-from pettingllms.multi_agent_env. search import SearchEnv, SearchEnvBatch
+from pettingllms.multi_agent_env.search import SearchEnv, SearchEnvBatch
+# pettingllms/multi_agent_env/__init__.py
+from pettingllms.multi_agent_env.deep_search import DeepSearchEnv, DeepSearchEnvBatch
 
 # Import Deep Search environment
 from pettingllms.multi_agent_env.deep_search import (

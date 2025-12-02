@@ -15,33 +15,30 @@ from pettingllms. multi_agent_env.deep_search.deep_search_utils import (
 logger = logging. getLogger(__name__)
 
 # Default Rubrics for Q-Agent
-DEFAULT_Q_AGENT_RUBRICS = """1. Query Decomposition Quality: The sub-queries should accurately decompose the original question into core information needs, identifying key entities, relationships, and constraints.
+DEFAULT_Q_AGENT_RUBRICS = '''
+1.Decomposition Correctness : The query plan should accurately break down the original question, effectively identifying and extracting the core entities, action/operation instructions, and key constraints in the question. Each sub-query should correctly correspond to a specific combination of subject, instruction, and its constraints, and the full set of sub-queries should completely cover all the information needs of the original question.
 
-2. Query Independence: Each sub-query should have independent retrieval goals with no functional overlap, ensuring efficient use of search resources.
+2.Decomposition Independence : Each sub-query in the query plan should have an independent, non-overlapping retrieval goal. There should be no sub-queries with functional overlap or semantic redundancy.
 
-3.  Query Specificity: Sub-queries should be specific enough to retrieve targeted information while avoiding overly broad or vague formulations.
+3.Expression Accuracy : Each sub-query should accurately convey the meaning of the original question, be clear and unambiguous, and be understandable without relying on surrounding context. No vague or ambiguous wording should be present.
 
-4.  Goal Clarity: Each sub-query should have a clear, well-defined goal statement that explains what information is expected to be retrieved.
+4.Retrieval Timeliness : For questions that include time constraints, the query plan should correctly parse, preserve, or supplement the time requirements to ensure the retrieved results meet the timeliness needs.
 
-5. Strategic Planning: The query plan should demonstrate strategic thinking about information gathering, considering dependencies between sub-queries and optimal search order.
+5.Expression Conciseness : Sub-queries should use standard written phrasing, be semantically concise yet complete, and avoid colloquial language, verbosity, or unnecessary embellishments.
 
-6.  Iteration Awareness: In subsequent rounds, the query plan should show awareness of previously gathered information and focus on filling remaining knowledge gaps.
+6.Expansion Relevance : If the user query is expanded, the query plan should perform reasonable semantic expansion, and the expansion dimensions should be highly relevant to the core needs, with no redundant expansions or low-relevance expansion content. If there is no expansion, this criterion is considered satisfied by default.
 
-7.  Efficiency: The number and scope of sub-queries should be appropriate - not too many (wasting resources) or too few (missing important aspects)."""
+'''
 
 
 # Default Rubrics for R-Agent
-DEFAULT_R_AGENT_RUBRICS = """1. Relevance Match: The document should fully match the core needs of the sub-query plan, providing information directly relevant to the specified goal.
-
-2. Information Quality: The document should contain substantive, detailed information rather than superficial overviews or irrelevant content.
-
-3. Source Authority: The document should come from authoritative, credible sources appropriate for the information need.
-
-4.  Content Freshness: For time-sensitive queries, the document should contain up-to-date information. 
-
-5. Complementarity: The document should provide complementary information to other selected documents, avoiding excessive redundancy.
-
-6.  Evidence Value: The document should provide concrete facts, data, or evidence that can support answering the original question."""
+DEFAULT_R_AGENT_RUBRICS = '''
+  1.Document Relevance : The document should fully match the core needs of the user query and the generated query plans, and should satisfy the user’s primary information need or directly answer the user’s question.
+  
+  2.Document Timeliness : If the user query and the generated query plans involve a specific point in time or a time range, the document’s content must align with the specified time. For example, for “Can a 610 score in the 2025 Gaokao get into Tsinghua University?”, the document must provide the 2025 cutoff score. Note: if a time range is specified, content covering any part of that range is considered compliant—for example, for “China’s GDP from Jan–Jul 2024,” a document that provides the GDP for any single month within Jan–Jul 2024 is acceptable. If neither the user query nor the query plans include a time requirement, the document is considered timely by default.
+  
+  3.Document Authority : Authority requirements vary by domain. The document must meet the authority expectations of the domain implied by the user query and the query plans. Determine whether the document satisfies the authority requirement by analyzing the document’s URL domain name and the source indicators in its title and snippet.
+  '''
 
 
 # RM-Agent System Prompt for Q-Agent Scoring

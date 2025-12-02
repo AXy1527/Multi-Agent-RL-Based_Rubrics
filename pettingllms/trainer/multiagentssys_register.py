@@ -18,6 +18,7 @@ ENV_CLASSES = {
     "alfworld_env": safe_import("pettingllms.multi_agent_env.alfworld.alfworld_env", "AlfworldEnv"),
     "search_env": safe_import("pettingllms.multi_agent_env.search.search_env", "SearchEnv"),
     "stateful_env": safe_import("pettingllms.multi_agent_env.stateful.stateful_env", "StatefulEnv"),
+    "deep_search_env": safe_import("pettingllms.multi_agent_env.deep_search.deep_search_env", "DeepSearchEnv"),
 }
 
 ENV_BATCH_CLASSES = {
@@ -29,6 +30,7 @@ ENV_BATCH_CLASSES = {
     "alfworld_env": safe_import("pettingllms.multi_agent_env.alfworld.alfworld_env", "AlfWorldEnvBatch"),
     "search_env": safe_import("pettingllms.multi_agent_env.search.search_env", "SearchEnvBatch"),
     "stateful_env": safe_import("pettingllms.multi_agent_env.stateful.stateful_env", "StatefulEnvBatch"),
+    "deep_search_env": safe_import("pettingllms.multi_agent_env.deep_search.deep_search_env", "DeepSearchEnvBatch"),
 }
 
 # Import agent classes
@@ -56,6 +58,10 @@ AGENT_CLASSES = {
     # Stateful agents
     "plan_agent": safe_import("pettingllms.multi_agent_env.stateful.agents.plan_agent", "PlanAgent"),
     "tool_call_agent": safe_import("pettingllms.multi_agent_env.stateful.agents.tool_agent", "ToolAgent"),
+    "q_agent": safe_import("pettingllms.multi_agent_env.deep_search.agents.q_agent", "QAgent"),
+    "r_agent": safe_import("pettingllms.multi_agent_env.deep_search. agents.r_agent", "RAgent"),
+    "a_agent": safe_import("pettingllms.multi_agent_env.deep_search.agents.a_agent", "AAgent"),
+    # "rm_agent": safe_import("pettingllms. multi_agent_env.deep_search.agents.rm_agent", "RMAgent"),
 }
 
 ENV_WORKER_CLASSES = {
@@ -63,7 +69,8 @@ ENV_WORKER_CLASSES = {
     "math_env": safe_import("pettingllms.multi_agent_env.math.math_worker", "get_ray_docker_worker_cls"),
     "math_aggretion_env": safe_import("pettingllms.multi_agent_env.math.math_worker", "get_ray_docker_worker_cls"),
     "search_env": safe_import("pettingllms.multi_agent_env.math.math_worker", "get_ray_docker_worker_cls"),
-    "stateful_env": safe_import("pettingllms.multi_agent_env.math.math_worker", "get_ray_docker_worker_cls")  
+    "stateful_env": safe_import("pettingllms.multi_agent_env.math.math_worker", "get_ray_docker_worker_cls"),
+    "deep_search_env": safe_import("pettingllms.multi_agent_env.deep_search.deep_search_worker", "get_ray_deep_search_worker_cls")
 }
 
 # Filter out None values for unavailable imports

@@ -1,11 +1,11 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from pettingllms.multi_agent_env. base.agent import Agent
-from pettingllms.multi_agent_env.base.env import Env
+from pettingllms.multi_agent_env.base.agent import Agent
+from pettingllms.multi_agent_env.base. env import Env
 from pettingllms.multi_agent_env.deep_search.deep_search_utils import (
     extract_a_agent_response,
-    truncatefn,
+    format_context_for_a_agent,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,111 +55,205 @@ You must wrap your entire response in `<response>` tags. Your output must strict
 
 class AAgent(Agent):
     """
-    A-Agent (Solver): Responsible for evidence synthesis and answer generation.
-    
-    Input: Initial question + complete history trajectory
-    Output: think + final answer
-    
-    Reward: Binary 0/1 based on answer correctness (NO RM scoring)
+    A-Agent (Solver): Evidence synthesis and answer generation.
+
+    Input: initial_question + complete history (all rounds' Q/R think/tool_call + selected_docs)
+           + final Q-Agent generate_answer think/tool_call
+    Output: <think>...</think><answer>...</answer>
+    Reward: Binary 0/1 based on answer correctness (NOT scored by RM-Agent)
     """
 
-    def __init__(self, rollout_idx: int | None = None, **kwargs):
-        """Initialize the A-Agent."""
+    def __init__(self, env_idx: int = None, agent_sample_idx: int = None, benchmark: str = None, **kwargs):
         super().__init__()
-        self.rollout_idx = rollout_idx
-        self. system_prompt = A_AGENT_SYSTEM_PROMPT
-        
-        # Accept other keyword arguments for compatibility
-        for key, value in (kwargs or {}).items():
+        self.env_idx = env_idx
+        self.agent_sample_idx = agent_sample_idx
+        self.benchmark = benchmark
+        self.system_prompt = A_AGENT_SYSTEM_PROMPT
+
+        self.current_prompt = {"text": "", "image": None}
+        self.current_action = ""
+        self.agent_reward = 0.0
+        self.reward_history = []
+        self.done = False
+        self.success = False
+
+        for key, value in kwargs.items():
             setattr(self, key, value)
 
     def update_from_env(self, turn_idx: int, env_data: Env):
         """
-        Update agent state based on environment data and generate appropriate prompt.
-        
-        Args:
-            turn_idx: Current turn index
-            env_data: Environment data containing current state
+        Update agent state based on environment data.
+
+        A-Agent input:
+        - initial_question
+        - complete history (all rounds' Q/R think/tool_call + selected_docs)
+        - final Q-Agent generate_answer response (included in history)
         """
         self.env_data = env_data
-        
-        # Get observation from environment
-        from pettingllms.multi_agent_env. deep_search.deep_search_env import AgentRole
-        observation = env_data.get_observation(AgentRole.A_AGENT)
-        
-        question = observation.get("question", "")
-        context = observation.get("context", "")
-        
-        # Build user prompt (context already formatted by format_context_for_a_agent)
-        user_prompt = context
-        
-        # Store as prompt with system and user parts
-        self.current_prompt = {
-            "text": user_prompt,
-            "system": self.system_prompt,
-            "image": None
-        }
+        state = getattr(env_data, "state", None)
+
+        if state is None:
+            self.current_prompt = {"text": "Error: No environment state", "image": None}
+            return
+
+        question = getattr(state, "question", "")
+        trajectory = getattr(state, "trajectory", [])
+
+        # Get the final Q-Agent response (generate_answer call)
+        final_q_think = getattr(state, "final_q_agent_think", "")
+        final_q_tool_call = getattr(state, "final_q_agent_tool_call", {})
+
+        # Format complete context
+        context = self._format_context(question, trajectory, final_q_think, final_q_tool_call)
+
+        user_prompt = f"{self.system_prompt}\n\n{context}"
+
+        self.current_prompt = {"text": user_prompt, "image": None}
+
+    def _format_context(
+            self,
+            question: str,
+            trajectory: List,
+            final_q_think: str = "",
+            final_q_tool_call: Dict = None
+    ) -> str:
+        """
+        Format complete context for A-Agent.
+
+        Includes:
+        - User question
+        - Complete history (all rounds)
+        - Final Q-Agent generate_answer response
+        - All selected documents
+        """
+        parts = [f"# User Question\n{question}\n"]
+
+        # Complete history
+        parts.append("# Search and Selection History\n")
+
+        for round_traj in trajectory:
+            round_idx = getattr(round_traj, 'round_idx', 0) if hasattr(round_traj, 'round_idx') else round_traj.get(
+                'round_idx', 0)
+
+            parts.append(f"## Round {round_idx + 1}")
+
+            # Q-Agent output
+            q_think = getattr(round_traj, 'q_agent_think', '') if hasattr(round_traj,
+                                                                          'q_agent_think') else round_traj.get(
+                'q_agent_think', '')
+            q_tool_call = getattr(round_traj, 'q_agent_tool_call', {}) if hasattr(round_traj,
+                                                                                  'q_agent_tool_call') else round_traj.get(
+                'q_agent_tool_call', {})
+
+            parts.append(f"### Q-Agent")
+            parts.append(f"<think>{q_think}</think>")
+            if q_tool_call:
+                parts.append(f"<tool_call>{json.dumps(q_tool_call)}</tool_call>")
+
+            # R-Agent output
+            r_think = getattr(round_traj, 'r_agent_think', '') if hasattr(round_traj,
+                                                                          'r_agent_think') else round_traj.get(
+                'r_agent_think', '')
+            r_tool_call = getattr(round_traj, 'r_agent_tool_call', {}) if hasattr(round_traj,
+                                                                                  'r_agent_tool_call') else round_traj.get(
+                'r_agent_tool_call', {})
+
+            parts.append(f"### R-Agent")
+            parts.append(f"<think>{r_think}</think>")
+            if r_tool_call:
+                parts.append(f"<tool_call>{json.dumps(r_tool_call)}</tool_call>")
+
+            parts.append("")
+
+        # Final Q-Agent generate_answer response (part of history but not scored)
+        if final_q_think or final_q_tool_call:
+            parts.append("## Final Q-Agent Decision")
+            parts.append(f"<think>{final_q_think}</think>")
+            if final_q_tool_call:
+                parts.append(f"<tool_call>{json.dumps(final_q_tool_call)}</tool_call>")
+            parts.append("")
+
+        # All selected documents consolidated
+        parts.append("# All Selected Documents\n")
+
+        doc_idx = 1
+        for round_traj in trajectory:
+            selected_docs = getattr(round_traj, 'selected_docs', []) if hasattr(round_traj,
+                                                                                'selected_docs') else round_traj.get(
+                'selected_docs', [])
+
+            for doc in selected_docs:
+                if hasattr(doc, 'title'):
+                    title = doc.title
+                    url = doc.url
+                    content = doc.content
+                else:
+                    title = doc.get('title', 'Untitled')
+                    url = doc.get('url', '')
+                    content = doc.get('content', doc.get('snippet', ''))
+
+                parts.append(f"## [{doc_idx}] {title}")
+                parts.append(f"**Source**: {url}")
+                parts.append(f"**Content**:\n{content}")
+                parts.append("")
+                doc_idx += 1
+
+        parts.append("# Your Task")
+        parts.append("Generate a comprehensive answer to the user's question based on the documents above.")
+        parts.append("Cite sources using [1], [2], etc.")
+
+        return "\n".join(parts)
 
     def update_from_model(self, response: str):
-        """
-        Parse model response and update agent state. 
-        
-        Args:
-            response: Raw response from the language model
-            
-        Returns:
-            Processed response
-        """
-        self.current_action = response
+        """Parse model response."""
+        self.current_action = response if response else ""
         return self.current_action
 
     async def step(self, env_data: Env, env_worker: Any = None):
-        """
-        Process the A-Agent's response and execute environment step.
-        
-        The environment handles:
-        - Parsing the response to extract final answer
-        - Evaluating correctness against ground truth
-        - Setting binary reward (0 or 1)
-        - Terminating the episode
-        
-        Args:
-            env_data: Environment data
-            env_worker: Optional environment worker for parallel execution
-        """
-        from pettingllms.multi_agent_env. deep_search.deep_search_env import AgentRole
-        
-        # Execute step in environment
-        await env_data.step(
-            role=AgentRole.A_AGENT.value,
-            action=self.current_action,
-            env_worker=env_worker
-        )
-        
-        # Get binary reward from environment
-        self.agent_reward = env_data.get_a_agent_reward()
-        self.reward_history.append(float(self.agent_reward))
-        
-        # Set done and success flags
+        """Process the agent's response and update environment."""
+        # Execute environment step
+        if hasattr(env_data, 'step'):
+            await env_data.step(
+                role="a_agent",
+                action=self.current_action,
+                env_worker=env_worker
+            )
+
+        # Mark as done
         self.done = True
-        self.success = env_data.state.a_agent_is_correct
-        
-        # Parse response for logging
-        parsed = extract_a_agent_response(self.current_action)
-        
-        logger.info(f"A-Agent generated answer.  Correct: {self.success}, Reward: {self.agent_reward}")
-        
-        # Store action in history
-        self.action_history.append({
-            "think": parsed.get("think", ""),
-            "answer": parsed.get("answer", ""),
-            "is_correct": self. success,
-            "reward": self.agent_reward,
-        })
+
+        # Get binary reward from environment
+        state = getattr(env_data, "state", None)
+        if state and hasattr(state, 'a_agent_is_correct'):
+            self.success = state.a_agent_is_correct
+            self.agent_reward = 1.
+            0 if self.success else 0.
+            0
+        else:
+            self.agent_reward = 0.0
+            self.success = False
+
+    def calculate_reward(self, env_data: Env):
+        """
+        A-Agent reward is BINARY 0/1 based on answer correctness.
+        NOT scored by RM-Agent.
+        """
+        state = getattr(env_data, "state", None)
+        if state and hasattr(state, 'a_agent_is_correct'):
+            self.success = state.a_agent_is_correct
+            self.agent_reward = 1.0 if self.success else 0.0
+        else:
+            self.agent_reward = 0.0
+            self.success = False
+
+        self.reward_history.append(self.agent_reward)
 
     def reset(self):
-        """Reset the agent's internal state for a new episode."""
+        """Reset the agent's internal state."""
         super().reset()
-        self.action_history = []
+        self.current_prompt = {"text": "", "image": None}
+        self.current_action = ""
+        self.agent_reward = 0.0
+        self.reward_history = []
         self.done = False
         self.success = False
